@@ -143,12 +143,21 @@ jobs:
           fi
 
           # 어느 단계에서 깨졌는지까지 알려줘야 로그를 열지 않고도 1차 판단이 된다.
-          # 조회가 실패해도 알림 자체는 반드시 나가야 하므로 모든 오류를 흡수한다.
-          step="$(curl -sS --max-time 10 \
-                    -H "Authorization: Bearer ${GH_TOKEN}" \
-                    -H "Accept: application/vnd.github+json" "${JOBS_API}" 2>/dev/null \
-                  | jq -r '[.jobs[]?.steps[]? | select(.conclusion=="failure") | .name] | first // empty' \
-                    2>/dev/null || true)"
+          # 스텝 결과가 API 에 반영되기까지 지연이 있어 짧게 재시도하고,
+          # 조회가 끝내 실패해도 알림 자체는 반드시 나가야 하므로 오류를 흡수한다.
+          step=""
+          for attempt in 1 2 3; do
+            resp="$(mktemp)"
+            api_code="$(curl -sS --max-time 10 -o "${resp}" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" "${JOBS_API}" || echo 000)"
+            step="$(jq -r '[.jobs[]?.steps[]? | select(.conclusion=="failure") | .name] | first // empty' \
+                    "${resp}" 2>/dev/null || true)"
+            echo "실패단계 조회 ${attempt}/3 — HTTP ${api_code}, 결과='${step:-없음}'"
+            rm -f "${resp}"
+            [[ -n "${step}" ]] && break
+            sleep 4
+          done
           # HTML parse_mode 를 쓰므로 조회해 온 문자열은 반드시 이스케이프한다
           step="$(printf '%s' "${step}" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
 
