@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>코스피 2026 시나리오 트래커</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#faf9f7;--card:#fff;--ink:#1f1e1c;--mute:#6b6a66;--line:rgba(0,0,0,.12);--red:#A32D2D;--green:#0F6E56;--blue:#185FA5}
+@media (prefers-color-scheme:dark){:root{--bg:#171614;--card:#211f1d;--ink:#eceae5;--mute:#9c9a94;--line:rgba(255,255,255,.14);--red:#F09595;--green:#5DCAA5;--blue:#85B7EB}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","Apple SD Gothic Neo",sans-serif;line-height:1.7;font-size:16px}
+.wrap{max-width:1040px;margin:0 auto;padding:40px 20px 72px}
+h1{font-size:25px;font-weight:600;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:18px;font-weight:600;margin:44px 0 12px;padding-top:20px;border-top:1px solid var(--line)}
+.sub{color:var(--mute);font-size:13px;margin-bottom:26px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:8px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.c .l{font-size:12px;color:var(--mute)}
+.c .v{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:1px 0}
+.c .s{font-size:12px;color:var(--mute)}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.cap{font-size:13px;color:var(--mute);margin-bottom:10px}
+.box{position:relative;width:100%;height:330px}
+.sc{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:11px;margin-top:14px}
+.s1{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:0 12px 12px 0;padding:13px 16px}
+.s1 .t{font-size:15px;font-weight:600}
+.s1 .p{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:2px 0}
+.s1 .d{font-size:12.5px;color:var(--mute)}
+.bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin:7px 0 8px}
+.bar i{display:block;height:100%;border-radius:3px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:12px}
+th,td{padding:8px 11px;border-bottom:1px solid var(--line);text-align:left}
+th{background:rgba(128,128,128,.08);font-weight:600;font-size:12.5px}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+.ev{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:13.5px;margin-top:12px}
+.note{background:rgba(128,128,128,.09);border-radius:10px;padding:13px 16px;font-size:13px;color:var(--mute);margin-top:36px}
+.err{color:var(--red);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>코스피 2026 시나리오 트래커</h1>
+  <div class="sub" id="stamp">데이터 로딩 중…</div>
+
+  <div class="cards" id="metrics"></div>
+
+  <h2>시나리오 추종 현황</h2>
+  <div class="sc" id="scen"></div>
+
+  <h2>실제 경로 vs 시나리오 경로</h2>
+  <div class="chart"><div class="cap" id="cap1">누적 종가와 3개 시나리오 예상 경로</div><div class="box"><canvas id="c1"></canvas></div></div>
+
+  <h2>사후확률 추이</h2>
+  <div class="chart"><div class="cap">관측이 쌓일수록 베이지안 갱신으로 확률이 이동합니다</div><div class="box" style="height:280px"><canvas id="c2"></canvas></div></div>
+
+  <h2>보조 지표</h2>
+  <div class="chart"><div class="cap">삼성전자·SK하이닉스 종가와 외국인 순매수 누적</div><div class="box" style="height:300px"><canvas id="c3"></canvas></div></div>
+
+  <h2>임계선 이벤트</h2>
+  <div id="events"></div>
+
+  <h2>일별 기록</h2>
+  <div id="tbl"></div>
+
+  <div class="note" id="disclaimer"></div>
+</div>
+
+<script>
+const fmt = (n, d = 0) => n == null ? '—' : Number(n).toLocaleString('ko-KR', {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = (n, d = 1) => n == null ? '—' : (n > 0 ? '+' : '') + Number(n).toFixed(d) + '%';
+const dark = matchMedia('(prefers-color-scheme:dark)').matches;
+const grid = dark ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.07)';
+const tick = dark ? '#9c9a94' : '#6b6a66';
+Chart.defaults.color = tick;
+Chart.defaults.font.size = 11;
+
+function interp(path, target) {
+  const pts = path.map(([d, v]) => [new Date(d + 'T00:00:00'), v]);
+  const t = new Date(target + 'T00:00:00');
+  if (t <= pts[0][0]) return pts[0][1];
+  if (t >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [d0, v0] = pts[i], [d1, v1] = pts[i + 1];
+    if (t >= d0 && t <= d1) {
+      const span = (d1 - d0) || 1;
+      return v0 + (v1 - v0) * ((t - d0) / span);
+    }
+  }
+  return null;
+}
+
+function posteriorSeries(history, cfg) {
+  const base = new Date(cfg.meta.base_date + 'T00:00:00');
+  const tau = cfg.meta.tau || 0.055;
+  const rows = history.filter(r => r.kospi != null && new Date(r.date + 'T00:00:00') >= base);
+  const acc = cfg.scenarios.map(() => []);
+  const out = cfg.scenarios.map(s => ({id: s.id, color: s.color, name: s.name, data: []}));
+  rows.forEach(r => {
+    cfg.scenarios.forEach((s, i) => {
+      const e = interp(s.path, r.date);
+      acc[i].push((r.kospi - e) / e);
+    });
+    const w = cfg.scenarios.map((s, i) => {
+      const errs = acc[i];
+      const rmse = Math.sqrt(errs.reduce((a, x) => a + x * x, 0) / errs.length);
+      return s.prior * Math.exp(-rmse / tau);
+    });
+    const tot = w.reduce((a, b) => a + b, 0) || 1;
+    w.forEach((x, i) => out[i].data.push(+(x / tot * 100).toFixed(1)));
+  });
+  return {labels: rows.map(r => r.date.slice(5)), series: out};
+}
+
+async function boot() {
+  let store, cfg;
+  try {
+    const bust = '?v=' + Date.now();
+    [store, cfg] = await Promise.all([
+      fetch('data/history.json' + bust).then(r => r.json()),
+      fetch('scenarios.json' + bust).then(r => r.json())
+    ]);
+  } catch (e) {
+    document.getElementById('stamp').innerHTML = '<span class="err">데이터를 불러오지 못했습니다. GitHub Actions가 최소 1회 실행되었는지 확인하세요.</span>';
+    return;
+  }
+
+  const hist = store.history || [];
+  const last = hist[hist.length - 1] || {};
+  const prev = hist[hist.length - 2];
+  const peak = cfg.meta.peak.value;
+  const v = store.verdict || {scenarios: []};
+  const lead = v.scenarios[0] || {};
+  const nameOf = Object.fromEntries(cfg.scenarios.map(s => [s.id, s.name]));
+
+  document.getElementById('stamp').textContent =
+    `최종 갱신 ${(store.updated_at || '').replace('T', ' ').slice(0, 16)} KST · 누적 ${hist.length}거래일 · 평일 17:00 자동 수집`;
+  document.getElementById('disclaimer').textContent = cfg.meta.note;
+
+  const dayChg = prev ? (last.kospi / prev.kospi - 1) * 100 : null;
+  document.getElementById('metrics').innerHTML = [
+    ['최근 종가', fmt(last.kospi, 2), last.date + (dayChg == null ? '' : ` · ${pct(dayChg, 2)}`), dayChg == null ? '' : (dayChg >= 0 ? 'var(--green)' : 'var(--red)')],
+    ['고점 대비', pct(last.from_peak), `${fmt(peak, 2)} 기준`, 'var(--red)'],
+    ['추종 시나리오', lead.id ? `${lead.id}. ${nameOf[lead.id]}` : '—', `사후확률 ${lead.posterior ? (lead.posterior * 100).toFixed(0) + '%' : '—'}`, lead.color],
+    ['경로 이탈도', lead.last_gap == null ? '—' : pct(lead.last_gap * 100), '선두 시나리오 대비', ''],
+    ['외국인 누적', last.foreign_cum ? (last.foreign_cum / 1e12).toFixed(2) + '조' : '—', '순매수 누계', last.foreign_cum >= 0 ? 'var(--blue)' : 'var(--red)']
+  ].map(([l, val, s, col]) =>
+    `<div class="c"><div class="l">${l}</div><div class="v"${col ? ` style="color:${col}"` : ''}>${val}</div><div class="s">${s}</div></div>`
+  ).join('');
+
+  document.getElementById('scen').innerHTML = v.scenarios.map(s => {
+    const meta = cfg.scenarios.find(x => x.id === s.id) || {};
+    return `<div class="s1" style="border-left-color:${s.color}">
+      <div class="t">${s.id}. ${s.name}</div>
+      <div class="p" style="color:${s.color}">${(s.posterior * 100).toFixed(0)}%</div>
+      <div class="bar"><i style="width:${(s.posterior * 100).toFixed(0)}%;background:${s.color}"></i></div>
+      <div class="d">사전 ${(s.prior * 100).toFixed(0)}% → 사후 ${(s.posterior * 100).toFixed(0)}% · RMSE ${(s.rmse * 100).toFixed(1)}%<br>${meta.reference || ''}</div>
+    </div>`;
+  }).join('');
+
+  const horizon = [...new Set(hist.map(r => r.date).concat(
+    cfg.scenarios[0].path.map(p => p[0])
+  ))].sort();
+  const idx = Object.fromEntries(horizon.map((d, i) => [d, i]));
+  document.getElementById('cap1').textContent =
+    `누적 종가 ${hist.length}건 · 시나리오 경로는 ${cfg.meta.base_date} 기준 일자 선형보간`;
+
+  new Chart(document.getElementById('c1'), {
+    type: 'line',
+    data: {
+      labels: horizon.map(d => d.slice(2).replace(/-/g, '/')),
+      datasets: [
+        ...cfg.scenarios.map(s => ({
+          label: `${s.id}. ${s.name}`, borderColor: s.color, backgroundColor: 'transparent',
+          data: horizon.map(d => Math.round(interp(s.path, d))),
+          borderWidth: 1.8, borderDash: s.id === 'A' ? [] : (s.id === 'B' ? [7, 4] : [3, 3]),
+          pointRadius: 0, tension: .3
+        })),
+        {
+          label: '실제 종가', borderColor: dark ? '#eceae5' : '#1f1e1c', backgroundColor: 'transparent',
+          data: horizon.map(d => { const r = hist.find(h => h.date === d); return r ? r.kospi : null; }),
+          borderWidth: 3, pointRadius: 2.5, tension: .2, spanGaps: false
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+      plugins: {legend: {position: 'bottom', labels: {boxWidth: 14, padding: 12}}},
+      scales: {y: {grid: {color: grid}, ticks: {callback: x => x.toLocaleString()}},
+               x: {grid: {display: false}, ticks: {maxTicksLimit: 14, maxRotation: 45}}}
+    }
+  });
+
+  const ps = posteriorSeries(hist, cfg);
+  new Chart(document.getElementById('c2'), {
+    type: 'line',
+    data: {labels: ps.labels, datasets: ps.series.map(s => ({
+      label: `${s.id}. ${s.name}`, borderColor: s.color, backgroundColor: s.color + '33',
+      data: s.data, fill: true, borderWidth: 2, pointRadius: 2, tension: .3
+    }))},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {boxWidth: 14, padding: 12}}},
+      scales: {y: {min: 0, max: 100, grid: {color: grid}, ticks: {callback: x => x + '%'}}, x: {grid: {display: false}}}}
+  });
+
+  new Chart(document.getElementById('c3'), {
+    data: {
+      labels: hist.map(r => r.date.slice(5)),
+      datasets: [
+        {type: 'line', label: '삼성전자', yAxisID: 'y', borderColor: '#378ADD', backgroundColor: 'transparent', data: hist.map(r => r.samsung), borderWidth: 2, pointRadius: 2, tension: .25, spanGaps: true},
+        {type: 'line', label: 'SK하이닉스 (÷10)', yAxisID: 'y', borderColor: '#7F77DD', backgroundColor: 'transparent', data: hist.map(r => r.hynix ? Math.round(r.hynix / 10) : null), borderWidth: 2, borderDash: [6, 3], pointRadius: 2, tension: .25, spanGaps: true},
+        {type: 'bar', label: '외국인 순매수 누적(조원)', yAxisID: 'y2', backgroundColor: '#1D9E7566', borderColor: '#1D9E75', borderWidth: 1, data: hist.map(r => r.foreign_cum ? +(r.foreign_cum / 1e12).toFixed(2) : 0)}
+      ]
+    },
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {boxWidth: 14, padding: 12}}},
+      scales: {
+        y: {position: 'left', grid: {color: grid}, ticks: {callback: x => x.toLocaleString()}},
+        y2: {position: 'right', grid: {display: false}, ticks: {callback: x => x + '조'}},
+        x: {grid: {display: false}, ticks: {maxTicksLimit: 16}}
+      }}
+  });
+
+  const evs = store.events || [];
+  document.getElementById('events').innerHTML = evs.length
+    ? evs.slice().reverse().map(e => `<div class="ev"><strong>${e.date}</strong> · ${e.label} <span style="color:var(--mute)">→ 시나리오 ${e.signal} 신호</span></div>`).join('')
+    : `<div class="ev" style="color:var(--mute)">아직 임계선(7,500 / 5,600 / 5,000 / 4,200) 돌파 이벤트가 없습니다.</div>`;
+
+  document.getElementById('tbl').innerHTML =
+    `<table><tr><th>일자</th><th class="n">코스피</th><th class="n">고점 대비</th><th class="n">삼성전자</th><th class="n">SK하이닉스</th><th class="n">외국인 순매수</th><th>출처</th></tr>` +
+    hist.slice().reverse().slice(0, 40).map(r => `<tr>
+      <td>${r.date}</td>
+      <td class="n">${fmt(r.kospi, 2)}</td>
+      <td class="n" style="color:${r.from_peak < 0 ? 'var(--red)' : 'var(--green)'}">${pct(r.from_peak)}</td>
+      <td class="n">${fmt(r.samsung)}</td>
+      <td class="n">${fmt(r.hynix)}</td>
+      <td class="n">${r.foreign_net == null ? '—' : (r.foreign_net / 1e8).toLocaleString('ko-KR', {maximumFractionDigits: 0}) + '억'}</td>
+      <td style="color:var(--mute)">${r.source || ''}</td></tr>`).join('') + '</table>';
+}
+boot();
+</script>
+</body>
+</html>

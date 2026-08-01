@@ -1,0 +1,72 @@
+name: KOSPI scenario tracker
+
+on:
+  schedule:
+    # 평일 KST 17:00 = UTC 08:00 (장 마감 15:30 + KRX 데이터 정산 버퍼)
+    - cron: "0 8 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "특정 일자 강제 수집 (YYYY-MM-DD, 비우면 오늘)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kospi-tracker
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect close & evaluate scenarios
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TZ: "Asia/Seoul"
+        run: python tracker.py ${{ github.event.inputs.date }}
+
+      - name: Sync scenarios.json to Pages
+        run: cp scenarios.json docs/scenarios.json
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "kospi-tracker-bot"
+          git config user.email "actions@github.com"
+          git add docs/data/history.json docs/scenarios.json
+          if git diff --staged --quiet; then
+            echo "변경 없음 (휴장일 추정) — 커밋 생략"
+          else
+            git commit -m "data: $(TZ=Asia/Seoul date +%Y-%m-%d) 종가 반영"
+            git push
+          fi
+
+      - name: Notify failure
+        if: failure()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'EOF'
+          import os, requests
+          t, c = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+          if t and c:
+              requests.post(f"https://api.telegram.org/bot{t}/sendMessage",
+                            json={"chat_id": c,
+                                  "text": "❌ 코스피 트래커 실행 실패 — Actions 로그 확인"},
+                            timeout=10)
+          EOF

@@ -1,0 +1,8 @@
+config.json
+setup_github.ps1
+push_update.ps1
+*.pyc
+__pycache__/
+.env
+*.log
+.venv/
