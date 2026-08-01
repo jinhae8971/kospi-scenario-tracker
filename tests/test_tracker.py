@@ -274,6 +274,34 @@ class HistoryFileIntegrity(unittest.TestCase):
             self.assertAlmostEqual(a[k], b[k], places=4, msg=f"{k} 사후확률 드리프트")
 
 
+class AnomalyGuard(unittest.TestCase):
+    """일간 변동 한계 초과 시 조용히 넘어가지 않고 알림에 표시되어야 한다."""
+
+    def _cfg(self):
+        return load_scen()
+
+    def test_summary_carries_anomaly_banner(self):
+        cfg = self._cfg()
+        latest = {"date": "2026-07-31", "kospi": 6595.45, "from_peak": -29.73}
+        verdict = {"scenarios": [{"id": s["id"], "posterior": 1.0 / len(cfg["scenarios"]),
+                                  "last_gap": 0.0, "n": 1} for s in cfg["scenarios"]]}
+        msg = tk.build_summary(latest, 5593.56, verdict, cfg, [], "전일 대비 +17.91% — 확인 필요")
+        self.assertIn("이상치 감지", msg)
+        self.assertIn("+17.91%", msg)
+
+    def test_summary_clean_when_normal(self):
+        cfg = self._cfg()
+        latest = {"date": "2026-07-31", "kospi": 5600.0, "from_peak": -40.0}
+        verdict = {"scenarios": [{"id": s["id"], "posterior": 1.0 / len(cfg["scenarios"]),
+                                  "last_gap": 0.0, "n": 1} for s in cfg["scenarios"]]}
+        msg = tk.build_summary(latest, 5593.56, verdict, cfg, [])
+        self.assertNotIn("이상치 감지", msg)
+
+    def test_threshold_is_conservative(self):
+        self.assertGreaterEqual(tk.MOVE_ALERT_PCT, 8.0)
+        self.assertLessEqual(tk.MOVE_ALERT_PCT, 15.0)
+
+
 class Idempotency(unittest.TestCase):
     """같은 일자를 다시 돌려도 파일이 바이트 단위로 그대로여야 한다.
 

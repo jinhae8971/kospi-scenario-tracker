@@ -30,6 +30,9 @@ TICKERS = {"samsung": "005930", "hynix": "000660"}
 
 # 마지막 관측일이 이 일수보다 오래되면 소스 장애로 간주하고 경보
 STALE_ALERT_DAYS = 5
+# 코스피 역대 최대 일간 변동은 ±12% 수준. 이를 넘는 값은 실제 급변일 수도 있으나
+# 소스 파싱 오류/지수 교체일 가능성이 더 크므로 기록은 하되 반드시 사람에게 알린다.
+MOVE_ALERT_PCT = 10.0
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -447,6 +450,15 @@ def main() -> int:
         history.append(row)
         history.sort(key=lambda r: r["date"])
 
+    anomaly = None
+    if row and prev_close:
+        move = (row["kospi"] / prev_close - 1) * 100
+        if abs(move) > MOVE_ALERT_PCT:
+            anomaly = (f"전일 대비 {move:+.2f}% — 일간 변동 한계({MOVE_ALERT_PCT:.0f}%) 초과. "
+                       f"소스 데이터 확인 필요")
+            print(f"[경고] {target_iso} {anomaly}")
+            row["anomaly"] = round(move, 2)
+
     verdict = evaluate(history, scen_cfg)
     latest = next((r for r in history if r.get("date") == target_iso), history[-1])
     hits = check_thresholds(latest["kospi"], prev_close, scen_cfg) if row else []
@@ -474,7 +486,7 @@ def main() -> int:
         print("[telegram] 신규 관측 없음 - 발송 생략")
         return 0
 
-    send_telegram(build_summary(latest, prev_close, verdict, scen_cfg, hits), cfg)
+    send_telegram(build_summary(latest, prev_close, verdict, scen_cfg, hits, anomaly), cfg)
     return 0
 
 
@@ -493,7 +505,7 @@ def _stale_guard(history: list, target: dt.date, cfg: dict) -> None:
 
 
 def build_summary(latest: dict, prev_close: Optional[float], verdict: dict,
-                  scen_cfg: dict, hits: list) -> str:
+                  scen_cfg: dict, hits: list, anomaly: Optional[str] = None) -> str:
     lead = verdict["scenarios"][0]
     name_map = {s["id"]: s["name"] for s in scen_cfg["scenarios"]}
     peak_v = float(scen_cfg["meta"]["peak"]["value"])
@@ -514,6 +526,8 @@ def build_summary(latest: dict, prev_close: Optional[float], verdict: dict,
         f"\uc885\uac00 <b>{latest['kospi']:,.2f}</b>{chg}",
         f"\uace0\uc810({peak_v:,.2f}) \ub300\ube44 <b>{latest['from_peak']:+.1f}%</b>",
     ]
+    if anomaly:
+        lines.insert(1, f"\u26a0\ufe0f <b>\uc774\uc0c1\uce58 \uac10\uc9c0</b> \u2014 {_esc(anomaly)}")
     if latest.get("samsung"):
         chips = f"\uc0bc\uc131\uc804\uc790 {latest['samsung']:,.0f}"
         if latest.get("hynix"):
