@@ -33,6 +33,9 @@ STALE_ALERT_DAYS = 5
 # 코스피 역대 최대 일간 변동은 ±12% 수준. 이를 넘는 값은 실제 급변일 수도 있으나
 # 소스 파싱 오류/지수 교체일 가능성이 더 크므로 기록은 하되 반드시 사람에게 알린다.
 MOVE_ALERT_PCT = 10.0
+# 알림에서 바로 대시보드로 이동할 수 있어야 한다. 포크/이전 대비해 env 로 덮어쓸 수 있게 둔다.
+DASHBOARD_URL = os.getenv("DASHBOARD_URL",
+                          "https://jinhae8971.github.io/kospi-scenario-tracker/")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -560,6 +563,7 @@ def build_summary(latest: dict, prev_close: Optional[float], verdict: dict,
         lines.append("<i>\uad00\uce21 8\uc77c \ubbf8\ub9cc \u2014 \uc0ac\ud6c4\ud655\ub960\uc740 \uc544\uc9c1 \uc0ac\uc804\ud655\ub960\uc5d0 \uac00\uae5d\uc2b5\ub2c8\ub2e4.</i>")
     if hits:
         lines += [""] + [f"\u26a0\ufe0f {_esc(t['label'])}" for t in hits]
+    lines += ["", f'\U0001F517 <a href="{DASHBOARD_URL}">\ub300\uc2dc\ubcf4\ub4dc\uc5d0\uc11c \uc804\uccb4 \ucc28\ud2b8 \ubcf4\uae30</a>']
     lines += ["", "<i>\uc815\ubcf4 \uc81c\uacf5 \ubaa9\uc801\uc774\uba70 \ud22c\uc790 \uc790\ubb38\uc774 \uc544\ub2d9\ub2c8\ub2e4.</i>"]
     return "\n".join(lines)
 

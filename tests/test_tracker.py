@@ -356,3 +356,20 @@ class ForceNotify(unittest.TestCase):
     def test_truthy_values(self):
         for v in ("1", "true", "TRUE", "yes", "on"):
             self.assertIn(v.strip().lower(), ("1", "true", "yes", "on"))
+
+
+class DashboardLink(unittest.TestCase):
+    """알림만 보고 끝나지 않도록 대시보드로 가는 링크가 항상 붙어야 한다."""
+
+    def test_summary_contains_dashboard_link(self):
+        cfg = load_scen()
+        hist = json.load(open(tk.HISTORY_PATH, encoding="utf-8"))
+        rows = hist["history"] if isinstance(hist, dict) else hist
+        v = tk.evaluate(rows, cfg)
+        msg = tk.build_summary(rows[-1], rows[-2]["kospi"], v, cfg, [])
+        self.assertIn(tk.DASHBOARD_URL, msg, "대시보드 링크 누락")
+        self.assertIn("<a href=", msg, "링크가 앵커 태그로 렌더되지 않음")
+
+    def test_url_is_https_pages(self):
+        self.assertTrue(tk.DASHBOARD_URL.startswith("https://"), "평문 http 링크")
+        self.assertIn("github.io", tk.DASHBOARD_URL)

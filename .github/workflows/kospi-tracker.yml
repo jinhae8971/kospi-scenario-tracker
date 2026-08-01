@@ -137,6 +137,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JOBS_API: ${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DASHBOARD_URL: "https://jinhae8971.github.io/kospi-scenario-tracker/"
           RUN_NUMBER: ${{ github.run_number }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           EVENT_NAME: ${{ github.event_name }}
@@ -177,7 +178,7 @@ jobs:
             "· 실행 구분 : ${trigger} #${RUN_NUMBER} (시도 ${RUN_ATTEMPT})" \
             "· 발생 시각 : $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M') KST" \
             '데이터는 커밋되지 않았습니다. 대시보드는 직전 값을 그대로 유지합니다.' \
-            "<a href=\"${RUN_URL}\">실행 로그 열기</a>")"
+            "🔗 <a href=\"${DASHBOARD_URL}\">대시보드</a>  ·  <a href=\"${RUN_URL}\">실행 로그</a>")"
 
           body="$(mktemp)"
           code="$(curl -sS --max-time 15 -o "${body}" -w '%{http_code}' -X POST \
