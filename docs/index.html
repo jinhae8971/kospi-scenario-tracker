@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBFAF8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131210" media="(prefers-color-scheme: dark)">
+<meta name="description" content="2026년 코스피 조정 국면을 역사적 유사사례 기반 3개 시나리오로 추적하고, 평일 종가마다 베이지안 사후확률을 갱신하는 대시보드.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="코스피 2026 시나리오 트래커">
+<meta property="og:description" content="평일 종가 누적 · 베이지안 사후확률로 보는 조정 경로 추종 판정">
+<meta property="og:locale" content="ko_KR">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23131210'/%3E%3Cpath d='M5 22 L12 14 L18 19 L27 8' fill='none' stroke='%23378ADD' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E">
 <title>코스피 2026 시나리오 트래커</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -335,7 +343,9 @@ td b{font-weight:600}
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 /* ════════════════════════════════════════════════════════════
    계산 로직 — tracker.py 1:1 미러. 입출력 변경 금지.
@@ -440,11 +450,13 @@ let CFG = null, DATA = null, SERIES = [], CHARTS = [], WIN = null, MODE = 'obs',
       fetch('data/history.json', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('history.json ' + r.status); return r.json(); }),
       fetch('scenarios.json',    { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('scenarios.json ' + r.status); return r.json(); })
     ]);
+    if (typeof Chart === 'undefined')
+      throw new Error('차트 라이브러리(Chart.js)를 불러오지 못했습니다 — CDN 차단 또는 네트워크 오류');
     CFG = c; window.__live = h; DATA = h;
     $('#boot').remove(); $('#app').hidden = false;
     bind(); renderAll();
   }catch(e){
-    $('#boot').outerHTML = `<div class="err"><b>데이터를 불러오지 못했습니다</b>${esc(e.message)}<br>
+    $('#boot').outerHTML = `<div class="err"><b>대시보드를 불러오지 못했습니다</b>${esc(e.message)}<br>
       로컬에서 열었다면 <code>python3 -m http.server 8000 --directory docs</code> 로 HTTP 서버를 통해 접속하세요.</div>`;
   }
 })();

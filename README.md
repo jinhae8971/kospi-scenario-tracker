@@ -66,9 +66,23 @@ RMSE_i   = sqrt( mean( 오차_t² ) )            # 기준일 이후 전 관측�
 
 - **스케줄:** 평일 KST 17:00 (UTC 08:00, `cron: 0 8 * * 1-5`) — 장 마감 15:30 + KRX 정산 버퍼
 - **수동 실행:** `workflow_dispatch`, `date` 입력(YYYY-MM-DD)으로 특정 일자 백필 가능
-- 종가 수집 → 시나리오 평가 → `docs/data/history.json` 커밋 → 텔레그램 요약 발송
+- 파이프라인: `test` 잡(계산 코어 검증) → `track` 잡(수집 → 평가 → 무결성 검사 → 커밋 → 텔레그램)
+- 테스트가 실패하면 수집 잡 자체가 실행되지 않아 잘못된 데이터가 커밋되지 않습니다
 - 휴장일은 변경 없음으로 감지되어 커밋을 건너뜁니다
-- 실패 시 텔레그램 알림
+- 커밋 푸시가 경합하면 rebase 후 최대 3회 재시도
+- 실패 시 텔레그램 알림 (파이썬 의존성 없이 `curl`로 발송하므로 설치 단계 실패도 통보됨)
+
+### 안전장치
+
+| 항목 | 동작 |
+|------|------|
+| 입력 검증 | `date` 입력을 셸에 보간하지 않고 환경변수로 전달, 정규식으로 형식 검사 |
+| 설정 검증 | `scenarios.json` 스키마·사전확률 합·경로 앵커를 실행 전 검사, 위반 시 즉시 중단 |
+| 원자적 쓰기 | `history.json`은 임시 파일 → `fsync` → `os.replace`로 교체 (중단돼도 파손 없음) |
+| 네트워크 | 모든 외부 호출에 지수 백오프 재시도(3회) 및 20초 타임아웃 |
+| 출력 검증 | 커밋 직전 정렬·중복·종가 누락·사후확률 합을 재검사 |
+| 정체 경보 | 마지막 관측이 5일 이상 오래되면 휴장이 아닌 소스 장애로 보고 텔레그램 경보 |
+| 중복 방지 | 이미 기록된 일자는 재계산만 하고 알림을 재발송하지 않음 |
 
 ### 필요한 Secrets
 
@@ -82,6 +96,7 @@ RMSE_i   = sqrt( mean( 오차_t² ) )            # 기준일 이후 전 관측�
 ```
 ├── tracker.py                    # 수집 + 시나리오 평가 + 알림
 ├── scenarios.json                # 시나리오 경로·사전확률·트리거 (단일 진실 원천)
+├── tests/test_tracker.py         # 단위 테스트 + JS↔Python 계산 코어 패리티 검증
 ├── requirements.txt
 ├── .github/workflows/
 │   └── kospi-tracker.yml
@@ -97,14 +112,23 @@ RMSE_i   = sqrt( mean( 오차_t² ) )            # 기준일 이후 전 관측�
 pip install -r requirements.txt
 python tracker.py                 # 오늘 종가
 python tracker.py 2026-08-14      # 특정 일자
+
+python -m unittest discover -s tests -v   # 테스트 (node 설치 시 패리티 검증 포함)
+python -m http.server 8000 --directory docs   # 대시보드 로컬 확인
 ```
 
-텔레그램 자격증명은 환경변수 우선, 없으면 `config.json`(gitignore됨)에서 읽습니다.
+텔레그램 자격증명은 환경변수 우선, 없으면 `config.json`(gitignore됨)에서 읽습니다. 키는 대소문자를 가리지 않습니다.
 
 ```json
 { "TELEGRAM_TOKEN": "...", "TELEGRAM_CHAT_ID": "..." }
 ```
 
-## 8. 시나리오 수정
+## 8. 계산 코어 이중 구현 계약
+
+사후확률은 **두 곳에서 각각 계산됩니다.** `tracker.py`가 계산해 `history.json`에 기록한 값(텔레그램 알림의 근거)과, `docs/index.html`이 브라우저에서 시계열 전체를 재계산한 값(차트의 근거)입니다. 둘이 어긋나면 화면과 알림이 서로 다른 판정을 말하게 됩니다.
+
+`tests/test_tracker.py::JsPythonParity`가 이 계약을 지킵니다. HTML에서 `interp()`와 `posteriorSeries()`를 중괄호 매칭으로 떼어내 Node로 실행하고, 시나리오가 확실히 갈라지는 140행 합성 시계열에 대해 파이썬 결과와 RMSE 5자리·사후확률 4자리까지 대조합니다. **둘 중 한쪽의 수식을 고치면 반드시 다른 쪽도 함께 고쳐야 하며, 그러지 않으면 CI가 막습니다.**
+
+## 9. 시나리오 수정
 
 `scenarios.json`의 `path` 배열만 고치면 됩니다. 대시보드와 트래커가 동일 파일을 읽으므로 별도 코드 수정이 필요 없습니다. 수정 후 push하면 다음 실행부터 새 경로로 사후확률이 재계산됩니다.
