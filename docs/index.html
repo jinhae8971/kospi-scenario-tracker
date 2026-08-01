@@ -72,9 +72,9 @@ section.s{margin:52px 0}
 .vd{display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,368px); gap:0 48px; align-items:end}
 .vd .kick{font-size:11.5px; font-weight:600; letter-spacing:.01em; color:var(--faint); margin:0 0 14px}
 .vd .idrow{display:flex; align-items:center; gap:14px; margin-bottom:6px}
-.mark{width:34px; height:34px; border:1.5px solid; border-radius:3px; display:inline-flex; align-items:center;
-  justify-content:center; font-family:var(--mono); font-weight:600; font-size:16px; flex:none; line-height:1}
-.mark.sm{width:19px; height:19px; font-size:11px; border-width:1.25px; border-radius:2px}
+.mark{width:34px; height:34px; border:1.5px solid; border-radius:3px; display:inline-block; text-align:center;
+  font-family:var(--mono); font-weight:600; font-size:16px; flex:none; line-height:31px; vertical-align:middle}
+.mark.sm{width:19px; height:19px; font-size:11px; border-width:1.25px; border-radius:2px; line-height:16.5px}
 .vd h3{margin:0; font-size:clamp(27px,4.6vw,44px); font-weight:640; letter-spacing:-.035em; line-height:1.08}
 .vd .ref{font-size:13px; color:var(--mute); margin:0 0 18px}
 .vd .flow{display:flex; align-items:baseline; gap:9px; font-size:13.5px; color:var(--mute); flex-wrap:wrap}
@@ -208,14 +208,8 @@ td b{font-weight:600}
 .tmore{padding:12px 0 0; font-family:var(--mono); font-size:11px; color:var(--faint); text-align:center}
 
 /* ── footer ───────────────────────────────────── */
-.disc{font-size:12px; line-height:1.85; color:var(--faint); border-top:1px solid var(--hair); padding-top:16px;
+.disc{margin-bottom:72px; font-size:12px; line-height:1.85; color:var(--faint); border-top:1px solid var(--hair); padding-top:16px;
   max-width:88ch; text-wrap:pretty}
-.foot{margin:26px 0 72px; display:flex; gap:14px; align-items:baseline; flex-wrap:wrap;
-  font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--faint)}
-.foot button{appearance:none; border:0; background:none; font:inherit; color:var(--faint); cursor:pointer;
-  padding:2px 0; margin-right:14px; border-bottom:1.5px solid transparent}
-.foot button:hover{color:var(--ink)}
-.foot button[aria-pressed="true"]{color:var(--ink); border-bottom-color:var(--ink)}
 .err{margin:60px 0; border-top:2px solid var(--up); padding-top:16px; color:var(--up); font-size:14px; line-height:1.7; max-width:60ch}
 .err b{display:block; font-size:17px; margin-bottom:6px}
 .err code{font-family:var(--mono); font-size:12.5px; background:var(--wash); padding:1px 5px}
@@ -259,7 +253,7 @@ td b{font-weight:600}
 
 @media print{
   :root{--paper:#fff; --ink:#000; --mute:#444; --faint:#666; --rule:#999; --hair:#ddd; --wash:#f2f2f2; --up:#000; --down:#000}
-  .zoom,.mmap,.mnote,.foot{display:none!important}
+  .zoom,.mmap,.mnote{display:none!important}
   section.s{break-inside:avoid; page-break-inside:avoid}
   .al.lead{background:#fff; color:#000; border:1.5px solid #000; margin:0}
   .al.lead .tag{color:#000; opacity:1}
@@ -338,15 +332,6 @@ td b{font-weight:600}
 
     <div id="disclaimer" class="disc"></div>
 
-    <div class="foot">
-      <span>Preview</span>
-      <div id="stateseg" role="group" aria-label="데이터 상태">
-        <button type="button" data-s="live" aria-pressed="true">실제</button>
-        <button type="button" data-s="fixture" aria-pressed="false">픽스처</button>
-        <button type="button" data-s="mature" aria-pressed="false">250행</button>
-      </div>
-      <span id="statenote"></span>
-    </div>
   </div>
 </div>
 
@@ -446,69 +431,7 @@ function spark(vals, color, dcss, h){
 }
 
 /* ── 상태 ─────────────────────────────────────── */
-let CFG = null, DATA = null, SERIES = [], CHARTS = [], WIN = null, MODE = 'obs', STATE = 'live', OPEN = {};
-
-const FIXTURE = {
-  updated_at: "2026-11-20T17:02:00+09:00",
-  history: [
-    { date:"2026-07-31", kospi:6595.45, samsung:262500, hynix:1718000, foreign_net:7241000000000, foreign_cum:7241000000000, from_peak:-29.73, source:"naver" },
-    { date:"2026-09-15", kospi:5210.00, samsung:null, hynix:null, foreign_net:null, foreign_cum:7241000000000, from_peak:-44.49, source:"yfinance" },
-    { date:"2026-11-20", kospi:4180.33, samsung:141000, hynix:902000, foreign_net:-3120000000000, foreign_cum:1810000000000, from_peak:-55.46, source:"naver" }
-  ],
-  verdict: { leader:"C", scenarios:[
-    { id:"C", name:"구조적 베어마켓", color:"#E24B4A", prior:0.30, posterior:0.7412, rmse:0.0121, last_gap:-0.0043, n:3 },
-    { id:"B", name:"W자 재시험 후 박스권", color:"#378ADD", prior:0.45, posterior:0.2301, rmse:0.0729, last_gap:-0.3468, n:3 },
-    { id:"A", name:"V자 정상화", color:"#1D9E75", prior:0.25, posterior:0.0287, rmse:0.1904, last_gap:-0.4641, n:3 }
-  ]},
-  events: [
-    { date:"2026-09-15", level:5600, label:"5,600 하향 이탈 — W자 2차 저점 진입", signal:"B" },
-    { date:"2026-10-02", level:5000, label:"5,000 하향 이탈 — 구조적 베어마켓 경고", signal:"C" },
-    { date:"2026-11-20", level:4200, label:"4,200 하향 이탈 — 고점 대비 -55% 구간", signal:"C" }
-  ]
-};
-
-function detectEvents(hist, ths){
-  const out = [], seen = {};
-  for (let i = 1; i < hist.length; i++){
-    const a = hist[i-1].kospi, b = hist[i].kospi;
-    if (a == null || b == null) continue;
-    for (const t of ths){
-      const hit = t.dir === 'up' ? (a < t.level && b >= t.level) : (a > t.level && b <= t.level);
-      if (!hit) continue;
-      const now = Date.parse(hist[i].date);
-      if (seen[t.level] && now - seen[t.level] < 30 * DAY) continue;
-      const again = !!seen[t.level]; seen[t.level] = now;
-      out.push({ date: hist[i].date, level: t.level, signal: t.signal, label: again ? t.label + ' (재이탈)' : t.label });
-    }
-  }
-  return out;
-}
-function synth(cfg){
-  let seed = 20260731;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const B = cfg.scenarios.find(s => s.id === 'B'), C = cfg.scenarios.find(s => s.id === 'C');
-  const peak = cfg.meta.peak.value;
-  const hist = []; let d = Date.parse(cfg.meta.base_date), resid = 0, cum = 7241e9, n = 0;
-  hist.push({ date: cfg.meta.base_date, kospi: cfg.meta.base_value, samsung: 262500, hynix: 1718000,
-              foreign_net: 1840e9, foreign_cum: cum, from_peak: (cfg.meta.base_value/peak-1)*100, source: 'naver' });
-  while (n < 249){
-    d += DAY; const w = new Date(d).getUTCDay(); if (w === 0 || w === 6) continue;
-    n++;
-    const ds = iso(d), mix = Math.min(1, n / 110);
-    const tgt = interp(B.path, ds) * (1 - mix) + interp(C.path, ds) * mix;
-    resid = resid * 0.94 + (rnd() - 0.5) * 0.017;
-    const k = Math.round(tgt * (1 + resid) * 100) / 100;
-    const blank = n % 17 === 0, ratio = k / cfg.meta.base_value;
-    const net = Math.round(((rnd() - 0.56) * 2.4e12) / 1e9) * 1e9; cum += net;
-    hist.push({ date: ds, kospi: k,
-      samsung: blank ? null : Math.round(262500 * ratio * (1 + (rnd()-.5)*.05) / 100) * 100,
-      hynix:   blank ? null : Math.round(1718000 * ratio * (1 + (rnd()-.5)*.07) / 1000) * 1000,
-      foreign_net: blank ? null : net, foreign_cum: cum,
-      from_peak: Math.round((k / peak - 1) * 10000) / 100, source: blank ? 'yfinance' : 'naver' });
-  }
-  return { updated_at: new Date(Date.parse(hist[hist.length-1].date) + 8.5*3600e3).toISOString(),
-           history: hist, events: detectEvents(hist, cfg.thresholds), verdict: null };
-}
+let CFG = null, DATA = null, SERIES = [], CHARTS = [], WIN = null, MODE = 'obs', OPEN = {};
 
 /* ── boot ─────────────────────────────────────── */
 (async function boot(){
@@ -532,13 +455,6 @@ function bind(){
     MODE = b.dataset.z; setWindow(MODE);
     [...e.currentTarget.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
     applyWindow();
-  });
-  $('#stateseg').addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return;
-    STATE = b.dataset.s;
-    [...e.currentTarget.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-    DATA = STATE === 'live' ? window.__live : STATE === 'fixture' ? FIXTURE : synth(CFG);
-    WIN = null; OPEN = {}; renderAll();
   });
   $('#scen').addEventListener('click', e => {
     const row = e.target.closest('.mxr'); if (!row) return;
@@ -587,7 +503,6 @@ function renderAll(){
   renderAux(hist);
   renderTable(hist);
   $('#disclaimer').textContent = CFG.meta.note || '';
-  $('#statenote').textContent = `${hist.length} rows · ${(DATA.events||[]).length} events`;
 }
 
 function verdict(){
