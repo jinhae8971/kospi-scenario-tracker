@@ -1,0 +1,58 @@
+name: CI
+
+# 데이터 수집과 분리된 순수 검증 파이프라인.
+# 푸시/PR 시점에 계산 코어가 깨졌는지 즉시 잡아낸다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: 계산 코어 검증
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 유닛 테스트 + JS/Python 패리티
+        run: python -m unittest discover -s tests -v
+
+      - name: 배포 산출물 정합성
+        run: |
+          set -euo pipefail
+          # docs/ 가 웹 루트이므로 scenarios.json 사본이 루트본과 일치해야 한다
+          diff -q scenarios.json docs/scenarios.json
+          python - <<'PY'
+          import json, sys
+          h = json.load(open("docs/data/history.json", encoding="utf-8"))
+          rows = h["history"] if isinstance(h, dict) else h
+          ds = [r["date"] for r in rows]
+          assert ds == sorted(ds), "history 날짜 정렬 깨짐"
+          assert len(ds) == len(set(ds)), "history 날짜 중복"
+          assert all(r.get("kospi") is not None for r in rows), "종가 누락 행 존재"
+          print(f"history 정합성 OK ({len(rows)}행)")
+          PY
