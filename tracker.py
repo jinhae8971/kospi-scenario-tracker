@@ -91,9 +91,15 @@ def send_telegram(text: str, cfg: dict) -> None:
             timeout=20,
         )
         r.raise_for_status()
-        print("[telegram] 발송 완료")
+        # HTTP 200 이어도 ok:false 인 경우가 있어 본문까지 확인해야 "조용한 미전달"을 잡는다
+        payload = r.json()
+        if not payload.get("ok"):
+            raise RuntimeError(payload.get("description", "ok=false"))
+        mid = (payload.get("result") or {}).get("message_id", "?")
+        print(f"[telegram] 발송 완료 (message_id={mid})")
     except Exception as e:
-        print(f"[telegram] 발송 실패: {e}")
+        # 알림 실패로 데이터 수집까지 실패시키지는 않되, 로그에서 눈에 띄게 남긴다
+        print(f"::warning::[telegram] 발송 실패: {e}")
 
 
 # ---------------------------------------------------------------- fetch

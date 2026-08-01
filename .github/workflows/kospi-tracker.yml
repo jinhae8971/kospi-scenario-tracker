@@ -130,12 +130,22 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # pip 설치 단계에서 실패했을 수도 있으므로 파이썬 의존성 없이 curl 로 보낸다
-          if [[ -n "${TELEGRAM_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
-            curl -sS --max-time 15 -X POST \
-              "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-              --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-              --data-urlencode "text=$(printf '%s\n%s' '❌ 코스피 트래커 실행 실패' "${RUN_URL}")" \
-              -o /dev/null || echo "텔레그램 알림 실패"
-          else
-            echo "텔레그램 자격증명 없음 — 알림 생략"
+          if [[ -z "${TELEGRAM_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+            echo "::warning::텔레그램 자격증명 없음 — 알림 생략"
+            exit 0
           fi
+          body="$(mktemp)"
+          code="$(curl -sS --max-time 15 -o "${body}" -w '%{http_code}' -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=$(printf '%s\n%s' '❌ 코스피 트래커 실행 실패' "${RUN_URL}")" || echo 000)"
+          # 응답을 버리지 않고 ok/message_id 를 남겨야 "조용한 미전달"을 잡을 수 있다.
+          # 응답 본문에 토큰은 포함되지 않으며, 필요한 필드만 추출해 출력한다.
+          if [[ "${code}" == "200" ]] && grep -q '"ok":true' "${body}"; then
+            mid="$(sed -n 's/.*"message_id":\([0-9]*\).*/\1/p' "${body}" | head -1)"
+            echo "텔레그램 전송 확인 — HTTP ${code}, message_id=${mid:-?}"
+          else
+            desc="$(sed -n 's/.*"description":"\([^"]*\)".*/\1/p' "${body}" | head -1)"
+            echo "::error::텔레그램 전송 실패 — HTTP ${code} ${desc:-응답없음}"
+          fi
+          rm -f "${body}"
