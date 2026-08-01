@@ -97,6 +97,8 @@ jobs:
           PY
 
       - name: Commit updated data
+        env:
+          TARGET_DATE: ${{ inputs.date }}
         run: |
           set -euo pipefail
           git config user.name  "kospi-tracker-bot"
@@ -106,7 +108,8 @@ jobs:
             echo "변경 없음 (휴장일 추정) — 커밋 생략"
             exit 0
           fi
-          git commit -m "data: $(TZ=Asia/Seoul date +%Y-%m-%d) 종가 반영"
+          # 백필 실행이면 대상 일자를, 정기 실행이면 오늘(KST)을 커밋 메시지에 쓴다
+          git commit -m "data: ${TARGET_DATE:-$(TZ=Asia/Seoul date +%Y-%m-%d)} 종가 반영"
           for i in 1 2 3; do
             if git push; then
               echo "푸시 완료 (시도 ${i})"

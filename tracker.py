@@ -451,8 +451,7 @@ def main() -> int:
     latest = next((r for r in history if r.get("date") == target_iso), history[-1])
     hits = check_thresholds(latest["kospi"], prev_close, scen_cfg) if row else []
 
-    store = {
-        "updated_at": now_kst.isoformat(timespec="seconds"),
+    body = {
         "history": history,
         "verdict": verdict,
         "events": _dedup_events((store.get("events") or []) + [
@@ -460,7 +459,14 @@ def main() -> int:
             for t in hits
         ]),
     }
+    # 실질 내용이 그대로면 updated_at 도 그대로 둔다.
+    # 이렇게 해야 휴장일/재계산 실행이 타임스탬프만 바꾼 빈 커밋을 만들지 않는다.
+    unchanged = all(store.get(k) == v for k, v in body.items()) and "updated_at" in store
+    stamp = store["updated_at"] if unchanged else now_kst.isoformat(timespec="seconds")
+    store = {"updated_at": stamp, **body}
     save_json(HISTORY_PATH, store)
+    if unchanged:
+        print("[저장] 내용 동일 - updated_at 유지 (빈 커밋 방지)")
     print(f"[저장] {latest['date']} 코스피 {latest['kospi']:,} / 추종 시나리오 {verdict['leader']}")
 
     if not row:

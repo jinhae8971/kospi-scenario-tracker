@@ -274,5 +274,45 @@ class HistoryFileIntegrity(unittest.TestCase):
             self.assertAlmostEqual(a[k], b[k], places=4, msg=f"{k} 사후확률 드리프트")
 
 
+class Idempotency(unittest.TestCase):
+    """같은 일자를 다시 돌려도 파일이 바이트 단위로 그대로여야 한다.
+
+    updated_at 이 매번 갱신되면 휴장일마다 내용 없는 커밋이 쌓이고,
+    워크플로우의 '변경 없음 - 커밋 생략' 가드가 영원히 발동하지 않는다.
+    """
+
+    def test_rerun_produces_identical_file(self):
+        import tempfile
+        src = os.path.join(ROOT, "docs", "data", "history.json")
+        with open(src, encoding="utf-8") as f:
+            before = f.read()
+        store = json.loads(before)
+        if not store.get("history"):
+            self.skipTest("history 비어 있음")
+
+        with tempfile.TemporaryDirectory() as d:
+            dst = os.path.join(d, "history.json")
+            orig = tk.HISTORY_PATH
+            tk.HISTORY_PATH = dst
+            try:
+                tk.save_json(dst, store)
+                with open(dst, encoding="utf-8") as f:
+                    first = f.read()
+                tk.save_json(dst, json.loads(first))
+                with open(dst, encoding="utf-8") as f:
+                    second = f.read()
+            finally:
+                tk.HISTORY_PATH = orig
+        self.assertEqual(first, second, "동일 입력에 대해 직렬화 결과가 달라짐")
+
+    def test_updated_at_preserved_when_body_unchanged(self):
+        """main() 의 unchanged 분기가 소스에 실제로 존재하는지 확인."""
+        with open(os.path.join(ROOT, "tracker.py"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("unchanged = all(", src, "빈 커밋 방지 분기가 사라짐")
+        self.assertIn('store["updated_at"] if unchanged', src,
+                      "내용 동일 시 updated_at 을 유지하는 로직이 사라짐")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
