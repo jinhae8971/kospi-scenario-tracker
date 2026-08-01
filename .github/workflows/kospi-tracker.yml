@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: read   # 실패 알림에서 실패 단계명을 조회하기 위함
 
 concurrency:
   group: kospi-tracker
@@ -127,23 +128,53 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOBS_API: ${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_DATE: ${{ inputs.date }}
         run: |
-          # pip 설치 단계에서 실패했을 수도 있으므로 파이썬 의존성 없이 curl 로 보낸다
+          # pip 설치 단계에서 실패했을 수도 있으므로 파이썬 의존성 없이 curl/jq 로만 처리한다
           if [[ -z "${TELEGRAM_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
             echo "::warning::텔레그램 자격증명 없음 — 알림 생략"
             exit 0
           fi
+
+          # 어느 단계에서 깨졌는지까지 알려줘야 로그를 열지 않고도 1차 판단이 된다.
+          # 조회가 실패해도 알림 자체는 반드시 나가야 하므로 모든 오류를 흡수한다.
+          step="$(curl -sS --max-time 10 \
+                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github+json" "${JOBS_API}" 2>/dev/null \
+                  | jq -r '[.jobs[]?.steps[]? | select(.conclusion=="failure") | .name] | first // empty' \
+                    2>/dev/null || true)"
+          # HTML parse_mode 를 쓰므로 조회해 온 문자열은 반드시 이스케이프한다
+          step="$(printf '%s' "${step}" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+
+          trigger="정기 실행"
+          [[ "${EVENT_NAME}" == "workflow_dispatch" ]] && trigger="수동 실행"
+
+          text="$(printf '%s\n\n%s\n%s\n%s\n%s\n\n%s\n\n%s' \
+            '❌ <b>코스피 트래커 실행 실패</b>' \
+            "· 실패 단계 : ${step:-확인 불가}" \
+            "· 대상 일자 : ${TARGET_DATE:-오늘(자동)}" \
+            "· 실행 구분 : ${trigger} #${RUN_NUMBER} (시도 ${RUN_ATTEMPT})" \
+            "· 발생 시각 : $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M') KST" \
+            '데이터는 커밋되지 않았습니다. 대시보드는 직전 값을 그대로 유지합니다.' \
+            "<a href=\"${RUN_URL}\">실행 로그 열기</a>")"
+
           body="$(mktemp)"
           code="$(curl -sS --max-time 15 -o "${body}" -w '%{http_code}' -X POST \
             "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=$(printf '%s\n%s' '❌ 코스피 트래커 실행 실패' "${RUN_URL}")" || echo 000)"
+            --data-urlencode "text=${text}" \
+            -d "parse_mode=HTML" -d "disable_web_page_preview=true" || echo 000)"
           # 응답을 버리지 않고 ok/message_id 를 남겨야 "조용한 미전달"을 잡을 수 있다.
           # 응답 본문에 토큰은 포함되지 않으며, 필요한 필드만 추출해 출력한다.
           if [[ "${code}" == "200" ]] && grep -q '"ok":true' "${body}"; then
             mid="$(sed -n 's/.*"message_id":\([0-9]*\).*/\1/p' "${body}" | head -1)"
-            echo "텔레그램 전송 확인 — HTTP ${code}, message_id=${mid:-?}"
+            echo "텔레그램 전송 확인 — HTTP ${code}, message_id=${mid:-?}, 실패단계=${step:-미상}"
           else
             desc="$(sed -n 's/.*"description":"\([^"]*\)".*/\1/p' "${body}" | head -1)"
             echo "::error::텔레그램 전송 실패 — HTTP ${code} ${desc:-응답없음}"
