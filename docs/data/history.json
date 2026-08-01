@@ -10,7 +10,7 @@
       "hynix": 1401000.0,
       "foreign_net": null,
       "from_peak": -39.66,
-      "foreign_cum": 0,
+      "foreign_cum": null,
       "chip_pair": 348600.0
     },
     {
@@ -22,7 +22,7 @@
       "hynix": 1322000.0,
       "foreign_net": null,
       "from_peak": -40.4,
-      "foreign_cum": 0,
+      "foreign_cum": null,
       "chip_pair": 339200.0
     },
     {

@@ -302,9 +302,10 @@ def main() -> int:
 
     if row:
         row["from_peak"] = round((row["kospi"] / peak - 1) * 100, 2)
-        prev_cum = history[-1].get("foreign_cum", 0) if history else 0
-        fn = row.get("foreign_net") or 0
-        row["foreign_cum"] = int(prev_cum + fn)
+        prev_cum = history[-1].get("foreign_cum") if history else None
+        fn = row.get("foreign_net")
+        # 외국인 순매수를 한 번도 수집하지 못한 구간은 0이 아니라 미측정(null)로 둔다
+        row["foreign_cum"] = None if (fn is None and prev_cum is None) else int((prev_cum or 0) + (fn or 0))
         if row.get("samsung") and row.get("hynix"):
             row["chip_pair"] = round(row["samsung"] + row["hynix"] / 10, 2)
         history.append(row)
