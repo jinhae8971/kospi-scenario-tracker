@@ -56,10 +56,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Collect close & evaluate scenarios
+      - name: 종가 수집 및 시나리오 평가
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -74,12 +74,12 @@ jobs:
           fi
           python tracker.py "${TARGET_DATE}"
 
-      - name: Sync scenarios.json to Pages
+      - name: Pages 로 scenarios.json 동기화
         run: |
           set -euo pipefail
           cp scenarios.json docs/scenarios.json
 
-      - name: Verify output integrity
+      - name: 산출물 정합성 검증
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -97,7 +97,7 @@ jobs:
           print(f"검증 통과 — {len(hist)}행, 최신 {dates[-1] if dates else '없음'}")
           PY
 
-      - name: Commit updated data
+      - name: 데이터 커밋
         env:
           TARGET_DATE: ${{ inputs.date }}
         run: |
@@ -123,7 +123,7 @@ jobs:
           echo "::error::3회 시도 후에도 푸시 실패"
           exit 1
 
-      - name: Notify failure
+      - name: 실패 알림
         if: failure()
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
