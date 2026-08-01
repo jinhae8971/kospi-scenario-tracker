@@ -10,6 +10,11 @@ on:
         description: "특정 일자 강제 수집 (YYYY-MM-DD, 비우면 오늘)"
         required: false
         default: ""
+      force_notify:
+        description: "신규 관측이 없어도 요약 알림을 강제 발송 (알림 경로 점검용)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -66,6 +71,7 @@ jobs:
           TZ: "Asia/Seoul"
           # 셸 인젝션 방지: 사용자 입력을 명령줄에 직접 보간하지 않는다
           TARGET_DATE: ${{ inputs.date }}
+          FORCE_NOTIFY: ${{ inputs.force_notify }}
         run: |
           set -euo pipefail
           if [[ -n "${TARGET_DATE}" && ! "${TARGET_DATE}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then

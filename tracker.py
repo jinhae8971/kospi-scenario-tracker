@@ -487,10 +487,14 @@ def main() -> int:
         print("[저장] 내용 동일 - updated_at 유지 (빈 커밋 방지)")
     print(f"[저장] {latest['date']} 코스피 {latest['kospi']:,} / 추종 시나리오 {verdict['leader']}")
 
-    if not row:
+    # 알림 경로 점검이나 놓친 요약 재발송을 위한 수동 스위치
+    force_notify = os.getenv("FORCE_NOTIFY", "").strip().lower() in ("1", "true", "yes", "on")
+    if not row and not force_notify:
         # 재계산만 한 경우 중복 알림을 보내지 않는다
         print("[telegram] 신규 관측 없음 - 발송 생략")
         return 0
+    if not row:
+        print("[telegram] 신규 관측 없음 - FORCE_NOTIFY 로 강제 발송")
 
     send_telegram(build_summary(latest, prev_close, verdict, scen_cfg, hits, anomaly), cfg)
     return 0

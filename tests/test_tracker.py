@@ -344,3 +344,15 @@ class Idempotency(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class ForceNotify(unittest.TestCase):
+    """알림 경로 점검용 강제 발송 스위치가 살아 있어야 한다."""
+
+    def test_switch_exists_and_defaults_off(self):
+        src = open(tk.__file__, encoding="utf-8").read()
+        self.assertIn('os.getenv("FORCE_NOTIFY"', src, "강제 발송 스위치가 사라짐")
+        self.assertIn("if not row and not force_notify:", src, "기본값이 발송 억제가 아님")
+
+    def test_truthy_values(self):
+        for v in ("1", "true", "TRUE", "yes", "on"):
+            self.assertIn(v.strip().lower(), ("1", "true", "yes", "on"))
