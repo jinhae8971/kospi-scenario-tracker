@@ -2,8 +2,11 @@ name: KOSPI scenario tracker
 
 on:
   schedule:
-    # 평일 KST 17:00 = UTC 08:00 (장 마감 15:30 + KRX 데이터 정산 버퍼)
-    - cron: "0 8 * * 1-5"
+    # 평일 KST 17:23 — 장 마감 15:30 + KRX 정산 버퍼.
+    # 정각/30분은 러너 혼잡으로 스케줄이 몇 시간씩 밀리므로 비정각으로 분산한다.
+    - cron: "23 8 * * 1-5"
+    # KST 20:41 — 따라잡기 실행. 수집 로직이 멱등이라 1차가 정상이면 커밋 없이 끝난다.
+    - cron: "41 11 * * 1-5"
   workflow_dispatch:
     inputs:
       date:
