@@ -119,8 +119,10 @@ jobs:
             echo "변경 없음 (휴장일 추정) — 커밋 생략"
             exit 0
           fi
-          # 백필 실행이면 대상 일자를, 정기 실행이면 오늘(KST)을 커밋 메시지에 쓴다
-          git commit -m "data: ${TARGET_DATE:-$(TZ=Asia/Seoul date +%Y-%m-%d)} 종가 반영"
+          # 실행 시각이 아니라 실제로 반영된 최신 관측일을 커밋 메시지에 쓴다.
+          # (따라잡기 실행은 오늘이 아닌 며칠 전 종가를 채울 수 있다)
+          latest="$(python -c "import json;print(json.load(open('docs/data/history.json'))['history'][-1]['date'])")"
+          git commit -m "data: ${latest} 종가 반영"
           for i in 1 2 3; do
             if git push; then
               echo "푸시 완료 (시도 ${i})"
