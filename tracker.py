@@ -30,6 +30,11 @@ TICKERS = {"samsung": "005930", "hynix": "000660"}
 
 # 마지막 관측일이 이 일수보다 오래되면 소스 장애로 간주하고 경보
 STALE_ALERT_DAYS = 5
+# 한 번의 실행에서 따라잡을 수 있는 최대 거래일 수.
+# GitHub 스케줄이 몇 시간씩 밀리거나 소스가 며칠 죽어도 다음 실행이 스스로 메운다.
+MAX_CATCHUP_DAYS = 10
+# KRX 마감 15:30 + 정산 버퍼. 이 시각 이전 실행은 당일 종가를 확정된 것으로 보지 않는다.
+CLOSE_SETTLED_HOUR = 16
 # 코스피 역대 최대 일간 변동은 ±12% 수준. 이를 넘는 값은 실제 급변일 수도 있으나
 # 소스 파싱 오류/지수 교체일 가능성이 더 크므로 기록은 하되 반드시 사람에게 알린다.
 MOVE_ALERT_PCT = 10.0
@@ -370,6 +375,34 @@ def save_json(path: str, obj) -> None:
 
 # ---------------------------------------------------------------- main
 
+def _market_day_ceiling(now: dt.datetime) -> dt.date:
+    """지금 수집 가능한 최신 거래일.
+
+    스케줄이 밀려 KST 자정을 넘겨 실행돼도 '실행 시각의 오늘'을 대상으로 삼지 않는다.
+    (밀린 실행이 아직 열리지도 않은 날을 조회해 매번 빈손으로 끝나던 원인)
+    """
+    d = now.date()
+    if now.hour < CLOSE_SETTLED_HOUR:
+        d -= dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d
+
+
+def _pending_dates(history: list, ceiling: dt.date,
+                   limit: int = MAX_CATCHUP_DAYS) -> list:
+    """마지막 관측 다음 영업일부터 상한까지 — 놓친 날을 함께 따라잡는다."""
+    have = {r.get("date") for r in history}
+    last = max((r["date"] for r in history if r.get("kospi") is not None), default=None)
+    d = (dt.date.fromisoformat(last) + dt.timedelta(days=1)) if last else ceiling
+    out = []
+    while d <= ceiling:
+        if d.weekday() < 5 and d.isoformat() not in have:
+            out.append(d)
+        d += dt.timedelta(days=1)
+    return out[-limit:]
+
+
 def _prev_row(history: list, target_iso: str) -> Optional[dict]:
     """target 직전 거래일 행. 과거 일자 백필 시에도 항상 올바른 비교 대상을 고른다."""
     prior = [r for r in history if r.get("date", "") < target_iso and r.get("kospi") is not None]
@@ -407,66 +440,95 @@ def main() -> int:
         return 1
 
     now_kst = dt.datetime.now(KST)
-    target = now_kst.date()
-    if len(sys.argv) > 1 and sys.argv[1].strip():
-        try:
-            target = dt.date.fromisoformat(sys.argv[1].strip())
-        except ValueError:
-            print(f"[치명] 날짜 형식 오류: {sys.argv[1]!r} (YYYY-MM-DD)")
-            return 1
-        if target > now_kst.date():
-            print(f"[치명] 미래 일자는 수집할 수 없음: {target}")
-            return 1
-
-    if target.weekday() >= 5:
-        print(f"{target} 주말 - 종료")
-        return 0
 
     store = load_json(HISTORY_PATH, {"history": []})
     if not isinstance(store, dict):
         store = {"history": []}
     history = store.get("history") or []
-    target_iso = target.isoformat()
 
-    already = any(r.get("date") == target_iso for r in history)
-    if already:
-        print(f"{target} 이미 기록됨 - 재계산만 수행")
-        row = None
+    forced = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1].strip() else ""
+    if forced:
+        try:
+            one = dt.date.fromisoformat(forced)
+        except ValueError:
+            print(f"[치명] 날짜 형식 오류: {forced!r} (YYYY-MM-DD)")
+            return 1
+        if one > now_kst.date():
+            print(f"[치명] 미래 일자는 수집할 수 없음: {one}")
+            return 1
+        if one.weekday() >= 5:
+            print(f"{one} 주말 - 종료")
+            return 0
+        ceiling, targets = one, [one]
     else:
-        row = fetch_naver(target) or fetch_yfinance(target)
-        if not row or row.get("kospi") is None:
-            print(f"{target} 데이터 확보 실패(휴장 또는 소스 장애)")
-            _stale_guard(history, target, cfg)
-            return 0
-        # 폴백 소스가 다른 날짜를 반환하는 경우 방어
-        if row.get("date") != target_iso:
-            print(f"[경고] 수집 일자 불일치({row.get('date')} != {target_iso}) - 폐기")
-            _stale_guard(history, target, cfg)
-            return 0
+        ceiling = _market_day_ceiling(now_kst)
+        targets = _pending_dates(history, ceiling)
+        if targets:
+            print(f"수집 대상 {len(targets)}건: {targets[0]} ~ {targets[-1]} (상한 {ceiling})")
+        else:
+            print(f"수집 대상 없음 - 최신 거래일 {ceiling} 까지 이미 반영, 재계산만 수행")
 
     peak = float(scen_cfg["meta"]["peak"]["value"])
+    collected, misses = [], []
+    for t in targets:
+        t_iso = t.isoformat()
+        if any(r.get("date") == t_iso for r in history):
+            print(f"{t} 이미 기록됨 - 건너뜀")
+            continue
+        r = fetch_naver(t) or fetch_yfinance(t)
+        if not r or r.get("kospi") is None:
+            print(f"{t} 데이터 확보 실패(휴장 또는 소스 장애)")
+            misses.append(t)
+            continue
+        # 폴백 소스가 다른 날짜를 반환하는 경우 방어
+        if r.get("date") != t_iso:
+            print(f"[경고] 수집 일자 불일치({r.get('date')} != {t_iso}) - 폐기")
+            misses.append(t)
+            continue
+
+        prev_r = _prev_row(history, t_iso)
+        r["from_peak"] = round((r["kospi"] / peak - 1) * 100, 2)
+        prev_cum = prev_r.get("foreign_cum") if prev_r else None
+        fn = r.get("foreign_net")
+        # 외국인 순매수를 한 번도 수집하지 못한 구간은 0이 아니라 미측정(null)로 둔다
+        r["foreign_cum"] = None if (fn is None and prev_cum is None) else int((prev_cum or 0) + (fn or 0))
+        if r.get("samsung") and r.get("hynix"):
+            r["chip_pair"] = round(r["samsung"] + r["hynix"] / 10, 2)
+        history.append(r)
+        history.sort(key=lambda x: x["date"])
+        collected.append(r)
+
+    # 따라잡기까지 시도했는데 한 건도 못 채웠다면 휴장이 아니라 소스 장애 쪽에 무게를 둔다
+    if misses and not collected:
+        _stale_guard(history, ceiling, cfg)
+
+    if not history:
+        print("[치명] 관측 이력이 비어 있음 - 저장 생략")
+        return 1
+
+    row = collected[-1] if collected else None
+    target_iso = row["date"] if row else history[-1]["date"]
     prev = _prev_row(history, target_iso)
     prev_close = prev["kospi"] if prev else None
 
-    if row:
-        row["from_peak"] = round((row["kospi"] / peak - 1) * 100, 2)
-        prev_cum = prev.get("foreign_cum") if prev else None
-        fn = row.get("foreign_net")
-        # 외국인 순매수를 한 번도 수집하지 못한 구간은 0이 아니라 미측정(null)로 둔다
-        row["foreign_cum"] = None if (fn is None and prev_cum is None) else int((prev_cum or 0) + (fn or 0))
-        if row.get("samsung") and row.get("hynix"):
-            row["chip_pair"] = round(row["samsung"] + row["hynix"] / 10, 2)
-        history.append(row)
-        history.sort(key=lambda r: r["date"])
-
+    # 이상치·임계 돌파는 따라잡은 날들에 대해 각각 판정한다(한 날만 보면 놓친다)
     anomaly = None
-    if row and prev_close:
-        move = (row["kospi"] / prev_close - 1) * 100
-        if abs(move) > MOVE_ALERT_PCT:
-            anomaly = (f"전일 대비 {move:+.2f}% — 일간 변동 한계({MOVE_ALERT_PCT:.0f}%) 초과. "
+    new_events = []
+    for r in collected:
+        p = _prev_row(history, r["date"])
+        p_close = p["kospi"] if p else None
+        if p_close:
+            move = (r["kospi"] / p_close - 1) * 100
+            if abs(move) > MOVE_ALERT_PCT:
+                msg = (f"전일 대비 {move:+.2f}% — 일간 변동 한계({MOVE_ALERT_PCT:.0f}%) 초과. "
                        f"소스 데이터 확인 필요")
-            print(f"[경고] {target_iso} {anomaly}")
-            row["anomaly"] = round(move, 2)
+                print(f"[경고] {r['date']} {msg}")
+                r["anomaly"] = round(move, 2)
+                if r is row:
+                    anomaly = msg
+        for t in check_thresholds(r["kospi"], p_close, scen_cfg):
+            new_events.append({"date": r["date"], "level": t["level"],
+                               "label": t["label"], "signal": t["signal"]})
 
     verdict = evaluate(history, scen_cfg)
     latest = next((r for r in history if r.get("date") == target_iso), history[-1])
@@ -475,10 +537,7 @@ def main() -> int:
     body = {
         "history": history,
         "verdict": verdict,
-        "events": _dedup_events((store.get("events") or []) + [
-            {"date": latest["date"], "level": t["level"], "label": t["label"], "signal": t["signal"]}
-            for t in hits
-        ]),
+        "events": _dedup_events((store.get("events") or []) + new_events),
     }
     # 실질 내용이 그대로면 updated_at 도 그대로 둔다.
     # 이렇게 해야 휴장일/재계산 실행이 타임스탬프만 바꾼 빈 커밋을 만들지 않는다.
