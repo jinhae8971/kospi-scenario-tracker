@@ -62,7 +62,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          # pip 캐시 비활성: 설치를 --no-cache-dir 로 하므로 캐시할 대상이 없고,
+          # Post 단계가 캐시 폴더 부재로 에러를 내 잡 전체를 실패로 만든다.
 
       - name: 의존성 설치
         run: pip install --no-cache-dir -r requirements.txt
