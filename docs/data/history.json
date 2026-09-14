@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-14T08:10:30+09:00",
+  "updated_at": "2026-09-15T08:52:42+09:00",
   "history": [
     {
       "date": "2026-07-29",
@@ -384,6 +384,18 @@
       "from_peak": -26.38,
       "foreign_cum": -1377800000000,
       "chip_pair": 440700.0
+    },
+    {
+      "date": "2026-09-14",
+      "kospi": 6684.37,
+      "volume_value": null,
+      "source": "naver",
+      "samsung": 248500.0,
+      "hynix": 1683000.0,
+      "foreign_net": null,
+      "from_peak": -28.78,
+      "foreign_cum": -1377800000000,
+      "chip_pair": 416800.0
     }
   ],
   "verdict": {
@@ -393,30 +405,30 @@
         "name": "V자 정상화",
         "color": "#1D9E75",
         "prior": 0.25,
-        "rmse": 0.07892,
-        "last_gap": 0.07464,
-        "n": 30,
-        "posterior": 0.7748
+        "rmse": 0.07777,
+        "last_gap": 0.02521,
+        "n": 31,
+        "posterior": 0.7883
       },
       {
         "id": "B",
         "name": "W자 재시험 후 박스권",
         "color": "#378ADD",
         "prior": 0.45,
-        "rmse": 0.1989,
-        "last_gap": 0.30622,
-        "n": 30,
-        "posterior": 0.1574
+        "rmse": 0.20162,
+        "last_gap": 0.27079,
+        "n": 31,
+        "posterior": 0.1493
       },
       {
         "id": "C",
         "name": "구조적 베어마켓",
         "color": "#E24B4A",
         "prior": 0.3,
-        "rmse": 0.22298,
-        "last_gap": 0.36022,
-        "n": 30,
-        "posterior": 0.0677
+        "rmse": 0.22729,
+        "last_gap": 0.33155,
+        "n": 31,
+        "posterior": 0.0624
       }
     ],
     "leader": "A"
